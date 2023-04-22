@@ -10,9 +10,14 @@ Use this to solve your favorite puzzle.
 
 A file or symlink "wordlist" must exist to check words.
 
+## HOWTO Create a wordlist
+For English US variant for example: `aspell -d en_US dump master > wordlist`
+
+see [Superuser.com thread on aspell list expansion](https://superuser.com/questions/137957/how-to-convert-aspell-dictionary-to-simple-list-of-words) for details on handling affixes, if any.
+
 ## Usage
 
-`$ jps scramble`
+`$ jumble scramble`
 
 Output:
 
@@ -21,17 +26,18 @@ Output:
 > \
 > Read:         138599 words\
 > Examined:     21388 - 8 letter words\
-> Found word #: 2\
+> Found word #: 2
 
 ## Build
 
-`$ gcc -o jps jumble.c`
+`$ gcc [-o name] jumble.c`
 
-jps can be any other name you choose.
+Default executable will be `jumble`.\
+*name* can be any other name you choose.
 
 ### License
 This program is free to use, modify, distribute.
 
-December 2022\
+April 2023\
 Peter Hyman\
 pete@peterhyman.com
