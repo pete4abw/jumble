@@ -1,14 +1,9 @@
 /* Jumble Puzzle Solver jps
- * word list file must exist in current dir as a file or link
- * as wordlist
+ * aspell libs must be available
  * jps accepts one argument, word to unscramble
- * Depending on wordlist, more than one match may be found!
+ * Depending on language, more than one match may be found!
  *
- * jps rmscleab
- * Found!: scramble
- * Read:         38619 words
- * Examined:     6020 - 8 letter words
- * Found word #: 1125
+ * Aspell methods shamelessly borrowed from info page
  *
  * Free program. Enjoy
  */
@@ -19,25 +14,45 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <aspell.h>					/* aspell library header */
 
-struct Jumble
+#define MAXLEN 8
+
+#define ODD(x)	(x % 2) == 1
+#define EVEN(x)	!ODD(x)
+
+/* swap bytes in place
+ * string may not be terminated
+ */
+static void swapbytes(int byte1, int byte2, char *string)
 {
-	char *jumble;					/* word scramble to solve */
-	int *count;					/* count of unique letters */
-};	
+	char tmp;
+	tmp = string[byte1-1];
+	string[byte1-1] = string[byte2-1];
+	string[byte2-1] = tmp;
+}
+
+/* shift bytes left 1 time at an offset
+ * string may not be terminated.
+ */
+static void rollbytesl(int byte1, char *string, int len)
+{
+	char tmp;
+	tmp = string[byte1-1];
+	strncpy(&string[byte1-1], &string[byte1], len-byte1);
+	string[len-1] = tmp;
+}
 
 int main( int argc, char **argv )
 {
-	struct Jumble jumble;
-	int len,i,j;
-	int found;
-	int counter;
-	int words_encountered=0, words_examined=0, words_found=0;
-	size_t buffersize;
-	unsigned int read_line;
-	char *target;
-	char *dictionary_file="wordlist";		/* word list. Can be link */
-	FILE *df;
+	int len,i,found=0,words_tested=0;
+	int combinations=1;				/* # of combinations to test */
+	char **words2test;				/* array of words to test */
+	char *tmpptr;
+	/* set up speller */
+	AspellConfig *jumble_config = new_aspell_config();
+	AspellCanHaveError *possible_err = new_aspell_speller(jumble_config);
+	AspellSpeller *spell_checker = 0;
 
 	if (argc != 2)
 	{
@@ -45,72 +60,109 @@ int main( int argc, char **argv )
 		return 1;
 	}
 
-	len=strlen(argv[1]);
-	buffersize=len+1;
-
-	target=malloc(buffersize);
-	if (target==NULL)
-		return 1;
-	jumble.jumble=malloc(buffersize);
-	if (jumble.jumble==NULL)
-		return 1;
-	jumble.count=malloc(buffersize*sizeof(int));
-	if (jumble.count==NULL)
-		return 1;
-
-	strcpy(jumble.jumble,argv[1]);
-
-	/* now count unique letter occurances */
-	for (i=0; i<len; i++)
+	len = strlen(argv[1]);
+	if (len > MAXLEN)
 	{
-		counter=0;
-		for (j=0; j<len; j++)
-		{
-			if (jumble.jumble[i] == jumble.jumble[j])
-				counter++;
-		}
-		jumble.count[i]=counter;
-	}
-
-	df=fopen(dictionary_file, "r");				/* open dictionary */
-	if (df==NULL)
-	{
-		printf("Could not open %s\n",dictionary_file);
+		fprintf(stderr, "Input string too long. Must be <= %d...Aborting\n", MAXLEN);
 		return 1;
 	}
 
-	/* now loop through entire file, checking for jumbles along the way */
+	tmpptr=argv[1];
+	for (i = 0; i < len; i++)
+		if (isupper((int)tmpptr[i]))
+			tmpptr[i] = tolower((int)tmpptr[i]);
 
-	while ((read_line = getline(&target, &buffersize, df)) != -1)	/* read dictionary file until word found */
-	{ 
-		words_encountered++; 				/* read a word */
-		if (read_line-1 != len) continue;		/* length does not match */
-		words_examined++; 				/* it's the same length */
-		for (i = 0; i < len; i++)
+	/* get factorials for bounded array */
+	for (i = len; i > 1; i--)
+		combinations *= i;
+
+	printf("Words to be tested: %d\n", combinations);
+
+	words2test = malloc((combinations+1) * sizeof(char *));		/* allow combinations of arrays */
+	if (words2test == NULL)
+		fprintf(stderr,"Memory error\n");
+
+	for (i = 0; i <= combinations; i++)
+	{
+		words2test[i] = malloc(len);				/* each array will be len length not null terminated */
+		if (words2test[i] == NULL)
+			fprintf(stderr,"Array allocation error\n");
+	}
+
+	/* this should never fail */
+	if (aspell_error_number(possible_err) != 0)
+	{
+		fprintf(stderr, "Aspell error: %s\n", aspell_error_message(possible_err));
+		return 1;
+	}
+	else
+		spell_checker = to_aspell_speller(possible_err);
+
+	/* get language variable */
+	tmpptr = getenv("LANG");
+	if (!tmpptr)
+		strcpy(tmpptr,"en_US");					/* default is en_US */
+	else if (strlen(tmpptr) > 5)					/* if there is .UTF-8 or additional cruft, trim */
+		tmpptr[5] = '\0';
+
+	/* set language */
+	aspell_config_replace(jumble_config, "lang", tmpptr);
+
+	strncpy(words2test[0],argv[1],len);				/* seed 0 array */
+
+	/* loop through all combinations on len letters until found*/
+	do
+	{
+		/* check word  */
+		found = aspell_speller_check(spell_checker, words2test[words_tested++], len);
+		if (!found)						/* if not found, set up next combination */
 		{
-			found=0;
-			for (j=0; j<len; j++)			/* check count of unique letters */
+			/* rotate for next iteration */
+			if (words_tested % 5040 == 0)			/* 8 length */
 			{
-				if (toupper(jumble.jumble[i]) == toupper(target[j]))
-					found++;
+				strncpy(words2test[words_tested], words2test[words_tested-5040], len);
+				rollbytesl(len-7, words2test[words_tested], len);
 			}
-
-			if (found != jumble.count[i])		/* letter count does not match */
+			else if (words_tested % 720 == 0)		/* 7 length */
 			{
-				found=0;
-				break;
+				strncpy(words2test[words_tested], words2test[words_tested-720], len);
+				rollbytesl(len-6, words2test[words_tested], len);
+			}
+			else if (words_tested % 120 == 0)		/* 6 length */
+			{
+				strncpy(words2test[words_tested], words2test[words_tested-120], len);
+				rollbytesl(len-5, words2test[words_tested], len);
+			}
+			else if (words_tested % 24 == 0)		/* 5 length */
+			{
+				strncpy(words2test[words_tested], words2test[words_tested-24], len);
+				rollbytesl(len-4, words2test[words_tested], len);
+			}
+			else if (words_tested % 6 == 0)			/* 4 length */
+			{
+				strncpy(words2test[words_tested], words2test[words_tested-6], len);
+				rollbytesl(len-3, words2test[words_tested], len);
+			}
+			else if (EVEN(words_tested))			/* min rotation */
+			{
+				strncpy(words2test[words_tested], words2test[words_tested-2], len);
+				rollbytesl(len-2, words2test[words_tested], len);
+			}
+			else if (ODD(words_tested))			/* swap last two bytes */
+			{
+				strncpy(words2test[words_tested], words2test[words_tested-1], len);
+				swapbytes(len-1, len, words2test[words_tested]);
 			}
 		}
-		if (!found) continue;				/* next word, please */
-		words_found++;					/* found one, store dictionary line */
-		printf("Found word!: line %d, %s\n", words_examined, target);	/* it's possible there may be more than one */
-	}
-	printf("Read:         %d words\n\
-		\rExamined:     %d - %d letter words\n\
-		\rFound word #: %d\n", words_encountered, words_examined, len, words_found);
-
-	fclose(df);
-
-	return 0;
+		else
+		{
+			printf("Solved: %s %d --> ", argv[1], words_tested);
+			tmpptr = words2test[words_tested-1];
+			for (i = 0; i < len; i++)
+				printf("%c", tmpptr[i]);
+			printf("\n");
+			break;
+		}
+	} while (words_tested < combinations);
+	/* free not needed for **words2test since program ends and cleanup occurs */
 }
-

@@ -1,0 +1,6 @@
+April 2023
+Some scrambles have more than one solution.
+Currently, only the first solution is returned.
+This is because there may be multiple duplicate
+combinations that will cause the same solution
+to print multiple times.
