@@ -17,7 +17,8 @@
 #include <aspell.h>					/* aspell library header */
 
 #define MAXLEN 8
-
+#define MINLEN 3
+#define MAXCOMBOS 24					/* max combination words found */
 #define ODD(x)	(x % 2) == 1
 #define EVEN(x)	!ODD(x)
 
@@ -45,14 +46,24 @@ static void rollbytesl(int byte1, char *string, int len)
 
 int main( int argc, char **argv )
 {
-	int len,i,found=0,words_tested=0;
+	int len,i,j,is_a_word=0,words_tested=0;
 	int combinations=1;				/* # of combinations to test */
+	int found=0;					/* count of words found */
 	char **words2test;				/* array of words to test */
+	char **words_found;				/* array of found words */
 	char *tmpptr;
 	/* set up speller */
 	AspellConfig *jumble_config = new_aspell_config();
 	AspellCanHaveError *possible_err = new_aspell_speller(jumble_config);
 	AspellSpeller *spell_checker = 0;
+
+	int mod_test[5][2] = {				/* simplify word test with constants */
+		{5040,7},
+		{720,6},
+		{120,5},
+		{24,4},
+		{6,3}
+	};
 
 	if (argc != 2)
 	{
@@ -63,7 +74,13 @@ int main( int argc, char **argv )
 	len = strlen(argv[1]);
 	if (len > MAXLEN)
 	{
-		fprintf(stderr, "Input string too long. Must be <= %d...Aborting\n", MAXLEN);
+		fprintf(stderr, "Input string too long. Must be <= %d letters...Aborting\n", MAXLEN);
+		return 1;
+	}
+
+	if (len < MINLEN)
+	{
+		fprintf(stderr, "Input string too short. Must be at least %d letters...Aborting\n", MINLEN);
 		return 1;
 	}
 
@@ -89,6 +106,14 @@ int main( int argc, char **argv )
 			fprintf(stderr,"Array allocation error\n");
 	}
 
+	words_found = malloc(MAXCOMBOS * sizeof(char *));		/* allow combinations of arrays */
+	for (i = 0; i < MAXCOMBOS; i++)
+	{
+		words_found[i] = malloc(len);				/* each array will be len length not null terminated */
+		if (words_found[i] == NULL)
+			fprintf(stderr,"Array allocation error\n");
+	}
+
 	/* this should never fail */
 	if (aspell_error_number(possible_err) != 0)
 	{
@@ -110,59 +135,60 @@ int main( int argc, char **argv )
 
 	strncpy(words2test[0],argv[1],len);				/* seed 0 array */
 
-	/* loop through all combinations on len letters until found*/
+	/* loop through all combinations on len letters */
 	do
 	{
 		/* check word  */
-		found = aspell_speller_check(spell_checker, words2test[words_tested++], len);
-		if (!found)						/* if not found, set up next combination */
+		is_a_word = aspell_speller_check(spell_checker, words2test[words_tested++], len);
+//		if (!is_a_word)						/* if not is_a_word, set up next combination */
 		{
 			/* rotate for next iteration */
-			if (words_tested % 5040 == 0)			/* 8 length */
+			for (i = 0; i < 5; i++)
 			{
-				strncpy(words2test[words_tested], words2test[words_tested-5040], len);
-				rollbytesl(len-7, words2test[words_tested], len);
+				if (words_tested % mod_test[i][0] == 0)	/* 8-4 length */
+				{
+					strncpy(words2test[words_tested], words2test[words_tested-mod_test[i][0]], len);
+					rollbytesl(len-mod_test[i][1], words2test[words_tested], len);
+					break;
+				}
 			}
-			else if (words_tested % 720 == 0)		/* 7 length */
+			/* if i == 5 then process last 3 letters */
+			if (i == 5)
 			{
-				strncpy(words2test[words_tested], words2test[words_tested-720], len);
-				rollbytesl(len-6, words2test[words_tested], len);
-			}
-			else if (words_tested % 120 == 0)		/* 6 length */
-			{
-				strncpy(words2test[words_tested], words2test[words_tested-120], len);
-				rollbytesl(len-5, words2test[words_tested], len);
-			}
-			else if (words_tested % 24 == 0)		/* 5 length */
-			{
-				strncpy(words2test[words_tested], words2test[words_tested-24], len);
-				rollbytesl(len-4, words2test[words_tested], len);
-			}
-			else if (words_tested % 6 == 0)			/* 4 length */
-			{
-				strncpy(words2test[words_tested], words2test[words_tested-6], len);
-				rollbytesl(len-3, words2test[words_tested], len);
-			}
-			else if (EVEN(words_tested))			/* min rotation */
-			{
-				strncpy(words2test[words_tested], words2test[words_tested-2], len);
-				rollbytesl(len-2, words2test[words_tested], len);
-			}
-			else if (ODD(words_tested))			/* swap last two bytes */
-			{
-				strncpy(words2test[words_tested], words2test[words_tested-1], len);
-				swapbytes(len-1, len, words2test[words_tested]);
+				if (EVEN(words_tested))			/* 3 length min rotation */
+				{
+					strncpy(words2test[words_tested], words2test[words_tested-2], len);
+					rollbytesl(len-2, words2test[words_tested], len);
+				}
+				else if (ODD(words_tested))		/* swap last two bytes */
+				{
+					strncpy(words2test[words_tested], words2test[words_tested-1], len);
+					swapbytes(len-1, len, words2test[words_tested]);
+				}
 			}
 		}
-		else
+		if (is_a_word)						/* word found, show it */
 		{
 			printf("Solved: %s %d --> ", argv[1], words_tested);
 			tmpptr = words2test[words_tested-1];
-			for (i = 0; i < len; i++)
-				printf("%c", tmpptr[i]);
+			for (j = 0; j < len; j++)
+				printf("%c", tmpptr[j]);
 			printf("\n");
-			break;
+			if (found++ > 0)				/* 2nd+ word found */
+			{
+				if (found > MAXCOMBOS)
+				{
+					fprintf(stderr,">%d many combinations found...\n", MAXCOMBOS);
+					break;
+				}
+				for (j = 1; j < found; j++)		/* have we seen this word before? */
+					if (!strncmp(words_found[j-1], tmpptr, len))
+					       continue;
+
+				if (j == found)				/* nope, add to words_found array */
+					strncpy(words_found[found-1], tmpptr, len);
+			}
 		}
 	} while (words_tested < combinations);
-	/* free not needed for **words2test since program ends and cleanup occurs */
+	/* free not needed for **words2test/words_found since program ends and cleanup occurs */
 }
