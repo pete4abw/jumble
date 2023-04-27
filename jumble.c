@@ -169,25 +169,31 @@ int main( int argc, char **argv )
 		}
 		if (is_a_word)						/* word found, show it */
 		{
-			printf("Solved: %s %d --> ", argv[1], words_tested);
 			tmpptr = words2test[words_tested-1];
-			for (j = 0; j < len; j++)
-				printf("%c", tmpptr[j]);
-			printf("\n");
-			if (found++ > 0)				/* 2nd+ word found */
+			if (found == 0)					/* first word found */
+				strncpy(words_found[0], tmpptr, len);
+			else if (found > 0)				/* 2nd+ word found */
 			{
 				if (found > MAXCOMBOS)
 				{
 					fprintf(stderr,">%d many combinations found...\n", MAXCOMBOS);
 					break;
 				}
-				for (j = 1; j < found; j++)		/* have we seen this word before? */
-					if (!strncmp(words_found[j-1], tmpptr, len))
-					       continue;
+				for (j = 0; j <= found; j++)		/* have we seen this word before? */
+					if (!strncmp(words_found[j], tmpptr, len))
+					       break;			/* yes, found */
 
-				if (j == found)				/* nope, add to words_found array */
+				if (j > found)				/* no, this is a new word */
 					strncpy(words_found[found-1], tmpptr, len);
+				else
+					continue;			/* keep going */
 			}
+			/* print first found word or any new combinations */
+			found++;
+			printf("Solved: %s %d --> ", argv[1], words_tested);
+			for (j = 0; j < len; j++)
+				printf("%c", tmpptr[j]);
+			printf("\n");
 		}
 	} while (words_tested < combinations);
 	/* free not needed for **words2test/words_found since program ends and cleanup occurs */
